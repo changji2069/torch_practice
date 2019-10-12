@@ -45,7 +45,7 @@ landmarks = landmarks.astype('float').reshape(-1, 2)
 def show_landmarks(image, landmarks):
     if len(landmarks>0):
         plt.imshow(image)
-        plt.scatter(landmarks[:,0], landmarks[:,1], s=20, marker='.', c='r')
+        plt.scatter(landmarks[:,0], landmarks[:,1], s=10, marker='.', c='r')
         plt.pause(0.001) # pause for update
     else:
         print("Cropped region has no landmark.")
@@ -156,7 +156,7 @@ class RandomCrop(object):
 
         image = image[top:top + new_h, left:left + new_w]
 
-        landmarks = np.array([[x-left, y-top] for [x,y] in landmarks if left<x<left+new_w and top<y<top+new_h])
+        landmarks = np.array([[x-left, y-top] if left<x<left+new_w and top<y<top+new_h else [0,0] for [x,y] in landmarks])
 
         return {'image':image, 'landmarks':landmarks}
 
@@ -169,19 +169,62 @@ class ToTensor(object):
         image = image.transpose((2,0,1))
         return {'image':torch.from_numpy(image), 'landmarks':torch.from_numpy(landmarks)}
 
-scale = Rescale(256)
-crop = RandomCrop(70)
-composed = transforms.Compose([Rescale(256), RandomCrop(224)])
+# scale = Rescale(256)
+# crop = RandomCrop(70)
+# composed = transforms.Compose([Rescale(256), RandomCrop(224)])
+#
+# fig = plt.figure()
+# sample = face_dataset[np.random.randint(0,65)]
+#
+# for i, tsfrm in enumerate([scale, crop, composed]):
+#     transformed_sample = tsfrm(sample)
+#
+#     ax = plt.subplot(1,3, i+1)
+#     plt.tight_layout()
+#     ax.set_title(type(tsfrm).__name__)
+#     show_landmarks(**transformed_sample) #simply unpacking the dict
+#
+# plt.show()
+transformed_dataset = FaceLandmarksDataset(csv_file='data/faces/face_landmarks.csv',
+                                           root_dir='data/faces/',
+                                           transform=transforms.Compose([
+                                               Rescale(256),
+                                               RandomCrop(224),
+                                               ToTensor()
+                                           ]))
 
-fig = plt.figure()
-sample = face_dataset[np.random.randint(0,65)]
+dataloader = DataLoader(transformed_dataset, batch_size=4,
+                        shuffle=True, num_workers=4)
 
-for i, tsfrm in enumerate([scale, crop, composed]):
-    transformed_sample = tsfrm(sample)
 
-    ax = plt.subplot(1,3, i+1)
-    plt.tight_layout()
-    ax.set_title(type(tsfrm).__name__)
-    show_landmarks(**transformed_sample) #simply unpacking the dict
+# Helper function to show a batch
+def show_landmarks_batch(sample_batched):
+    """Show image with landmarks for a batch of samples."""
+    images_batch, landmarks_batch = \
+            sample_batched['image'], sample_batched['landmarks']
+    batch_size = len(images_batch)
+    im_size = images_batch.size(2)
+    grid_border_size = 2
 
-plt.show()
+    grid = utils.make_grid(images_batch)
+    plt.imshow(grid.numpy().transpose((1, 2, 0)))
+
+    for i in range(batch_size):
+        plt.scatter(landmarks_batch[i, :, 0].numpy() + i * im_size + (i + 1) * grid_border_size,
+                    landmarks_batch[i, :, 1].numpy() + grid_border_size,
+                    s=10, marker='.', c='r')
+
+        plt.title('Batch from dataloader')
+
+for i_batch, sample_batched in enumerate(dataloader):
+    print(i_batch, sample_batched['image'].size(),
+          sample_batched['landmarks'].size())
+
+    # observe 4th batch and stop.
+    if i_batch == 3:
+        plt.figure()
+        show_landmarks_batch(sample_batched)
+        plt.axis('off')
+        plt.ioff()
+        plt.show()
+        break
